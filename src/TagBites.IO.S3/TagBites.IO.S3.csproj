@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Package info -->
+  <PropertyGroup>
+    <PackageId>TagBites.IO.S3Storage</PackageId>
+    <Product>TagBites.IO.S3Storage</Product>
+    <Title>TagBites.IO.S3Storage</Title>
+
+    <Description></Description>
+    <PackageTags>file;files;system;filesystem;sync;C#;s3;storage;cloudflare;r2</PackageTags>
+
+    <PackageProjectUrl>https://www.tagbites.com/io</PackageProjectUrl>
+    <PackageIconUrl>https://www.tagbites.com/io/icon.png</PackageIconUrl>
+
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/TagBites/TagBites.IO.S3.git</RepositoryUrl>
+  </PropertyGroup>
+
+  <!-- Targets -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+  </PropertyGroup>
+
+  <!-- Build -->
+  <PropertyGroup>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RootNamespace>TagBites.IO.S3Storage</RootNamespace>
+    <LangVersion>10</LangVersion>
+  </PropertyGroup>
+
+  <!-- References -->
+  <Choose>
+    <When Condition="'$(SolutionName)' == 'TagBites.IO-dev'">
+      <ItemGroup>
+        <ProjectReference Include="$(SolutionDir)\src\TagBites.IO\TagBites.IO.csproj" />
+      </ItemGroup>
+    </When>
+    <Otherwise>
+      <ItemGroup>
+        <PackageReference Include="TagBites.IO" Version="1.3.7" />
+      </ItemGroup>
+    </Otherwise>
+  </Choose>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="3.7.305.24" />
+  </ItemGroup>
+
+</Project>
