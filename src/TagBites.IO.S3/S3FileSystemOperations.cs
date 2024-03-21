@@ -17,6 +17,9 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
     public char DirectorySeparator => '/';
     public string DirectorySeparatorString => "/";
 
+    public string Kind => "s3";
+    public string Name => _bucketName;
+
     #region IFileSystemOperationsMetadataSupport
 
     bool IFileSystemMetadataSupport.SupportsIsHiddenMetadata => false;
