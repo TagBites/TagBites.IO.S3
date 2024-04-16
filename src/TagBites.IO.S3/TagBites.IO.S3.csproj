@@ -2,9 +2,9 @@
 
   <!-- Package info -->
   <PropertyGroup>
-    <PackageId>TagBites.IO.S3Storage</PackageId>
-    <Product>TagBites.IO.S3Storage</Product>
-    <Title>TagBites.IO.S3Storage</Title>
+    <PackageId>TagBites.IO.S3</PackageId>
+    <Product>TagBites.IO.S3</Product>
+    <Title>TagBites.IO.S3</Title>
 
     <Description></Description>
     <PackageTags>file;files;system;filesystem;sync;C#;s3;storage;cloudflare;r2</PackageTags>
@@ -30,7 +30,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <RootNamespace>TagBites.IO.S3Storage</RootNamespace>
+    <RootNamespace>TagBites.IO.S3</RootNamespace>
     <LangVersion>10</LangVersion>
   </PropertyGroup>
 
@@ -43,7 +43,7 @@
     </When>
     <Otherwise>
       <ItemGroup>
-        <PackageReference Include="TagBites.IO" Version="1.3.8" />
+        <PackageReference Include="TagBites.IO" Version="1.3.9" />
       </ItemGroup>
     </Otherwise>
   </Choose>
