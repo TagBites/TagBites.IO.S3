@@ -1,10 +1,12 @@
-﻿<Project>
+<Project>
 
   <!-- Company/Copyright -->
   <PropertyGroup>
     <Company>Tag Bites sp. z o.o.</Company>
     <Authors>Tag Bites sp. z o.o.</Authors>
-    <Copyright>Tag Bites sp. z o.o. © 2012-2019</Copyright>
+    <CopyrightSinceYear>2012</CopyrightSinceYear>
+
+    <Copyright>© $(CopyrightSinceYear)-$([System.DateTime]::Today.ToString(`yyyy`)) $(Company)</Copyright>
   </PropertyGroup>
 
   <!-- Bin/Obj directories -->
@@ -20,6 +22,13 @@
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 
+  <!-- Publish -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Publish'">
+    <DebugType>none</DebugType>
+    <Optimize>True</Optimize>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
   <!-- Globalziation -->
   <PropertyGroup>
     <NeutralLanguage>en-US</NeutralLanguage>
@@ -32,6 +41,6 @@
 
   <!-- Includes -->
   <Import Condition="exists('Version.props')" Project="Version.props" />
-  <Import Condition="exists('Licensing.props')" Project="Licensing.props" /> 
+  <Import Condition="exists('Licensing.props')" Project="Licensing.props" />
 
 </Project>
