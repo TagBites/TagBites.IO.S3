@@ -13,6 +13,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
 {
     private readonly string _bucketName;
     private readonly IAmazonS3 _storageClient;
+    private readonly bool _disablePayloadSigning;
 
     public char DirectorySeparator => '/';
     public string DirectorySeparatorString => "/";
@@ -34,9 +35,13 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
         _storageClient = new AmazonS3Client(credentials, new AmazonS3Config
         {
             ServiceURL = serviceUrl,
+            // Path-style addressing works with self-hosted S3-compatible servers (e.g. MinIO); virtual-hosted-style doesn't.
+            ForcePathStyle = true,
         });
 
         _bucketName = bucketName ?? throw new ArgumentNullException(nameof(bucketName));
+        // AWS4Signer rejects DisablePayloadSigning over plain HTTP.
+        _disablePayloadSigning = serviceUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<IFileSystemStructureLinkInfo> GetLinkInfoAsync(string fullName)
@@ -82,7 +87,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             BucketName = _bucketName,
             Key = file.FullName,
             InputStream = stream,
-            DisablePayloadSigning = true
+            DisablePayloadSigning = _disablePayloadSigning
         };
         var result = await _storageClient.PutObjectAsync(request);
 
@@ -107,7 +112,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             BucketName = _bucketName,
             Key = directoryFullName,
             InputStream = new MemoryStream(Array.Empty<byte>()), // Provide an empty stream
-            DisablePayloadSigning = true
+            DisablePayloadSigning = _disablePayloadSigning
         };
 
         var result = await _storageClient.PutObjectAsync(request);
@@ -138,7 +143,8 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             };
             var listResponse = await _storageClient.ListObjectsV2Async(listRequest);
 
-            foreach (var s3Object in listResponse.S3Objects)
+            // See GetLinksAsync for why S3Objects can be null (not just empty) on some servers.
+            foreach (var s3Object in listResponse.S3Objects ?? new List<S3Object>())
             {
                 var destinationKey = destinationFullName + s3Object.Key.Substring(sourceFullName.Length);
                 await _storageClient.CopyObjectAsync(_bucketName, s3Object.Key, _bucketName, destinationKey);
@@ -175,13 +181,16 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
                 };
                 var response = await _storageClient.ListObjectsV2Async(request);
 
-
-                var deleteRequest = new DeleteObjectsRequest()
+                // Some S3-compatible servers (e.g. MinIO) return a null list instead of empty for no results.
+                if (response.S3Objects is { Count: > 0 })
                 {
-                    BucketName = _bucketName,
-                    Objects = response.S3Objects.Select(x => new KeyVersion() { Key = x.Key }).ToList()
-                };
-                var deleteResponse = await _storageClient.DeleteObjectsAsync(deleteRequest);
+                    var deleteRequest = new DeleteObjectsRequest()
+                    {
+                        BucketName = _bucketName,
+                        Objects = response.S3Objects.Select(x => new KeyVersion() { Key = x.Key }).ToList()
+                    };
+                    var deleteResponse = await _storageClient.DeleteObjectsAsync(deleteRequest);
+                }
 
                 continuationToken = response.NextContinuationToken;
                 isTruncated = response.IsTruncated ?? false;
@@ -196,7 +205,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             };
             var response = await _storageClient.ListObjectsV2Async(request);
 
-            if (response.S3Objects.Any(x => x.Key != directoryFullName) || response.CommonPrefixes.Any())
+            if (response.S3Objects?.Any(x => x.Key != directoryFullName) == true || response.CommonPrefixes?.Any() == true)
                 throw new IOException("Folder is not empty.");
 
             var _ = await _storageClient.DeleteObjectAsync(_bucketName, directoryFullName);
@@ -224,9 +233,11 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             };
             var response = await _storageClient.ListObjectsV2Async(request);
 
-            result.AddRange(response.S3Objects.Where(x => x.Key != directoryFullName).Select(GetInfo));
+            // Some S3-compatible servers (e.g. MinIO) return null instead of an empty list here.
+            if (response.S3Objects is { Count: > 0 })
+                result.AddRange(response.S3Objects.Where(x => x.Key != directoryFullName).Select(GetInfo));
 
-            if (!options.Recursive && options.SearchForDirectories && response.CommonPrefixes.Count > 0)
+            if (options is { Recursive: false, SearchForDirectories: true } && response.CommonPrefixes is { Count: > 0 })
             {
                 foreach (var linkFullName in response.CommonPrefixes)
                 {
@@ -300,7 +311,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
             Length = response.ContentLength;
-            Hash = new FileHash(FileHashAlgorithm.Md5, response.ETag);
+            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag));
         }
         public FileInfo(S3Object response)
         {
@@ -308,7 +319,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
             Length = response.Size ?? 0;
-            Hash = new FileHash(FileHashAlgorithm.Md5, response.ETag);
+            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag));
         }
         public FileInfo(string fullName, GetObjectMetadataResponse response)
         {
@@ -316,9 +327,11 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
             Length = response.ContentLength;
-            Hash = new FileHash(FileHashAlgorithm.Md5, response.ETag);
+            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag));
         }
 
+        // Some S3-compatible servers (e.g. MinIO) leave quotes in the ETag that AWS strips.
+        private static string TrimETag(string etag) => etag?.Trim('"');
     }
     private class DirectoryInfo : IFileSystemStructureLinkInfo
     {
