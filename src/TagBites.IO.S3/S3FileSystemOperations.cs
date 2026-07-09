@@ -172,7 +172,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
                 var deleteResponse = await _storageClient.DeleteObjectsAsync(deleteRequest);
 
                 continuationToken = response.NextContinuationToken;
-                isTruncated = response.IsTruncated;
+                isTruncated = response.IsTruncated ?? false;
             }
         }
         else
@@ -225,7 +225,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             }
 
             continuationToken = response.NextContinuationToken;
-            isTruncated = response.IsTruncated;
+            isTruncated = response.IsTruncated ?? false;
         }
 
         return result;
@@ -295,7 +295,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             FullName = response.Key;
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
-            Length = response.Size;
+            Length = response.Size ?? 0;
             Hash = new FileHash(FileHashAlgorithm.Md5, response.ETag);
         }
         public FileInfo(string fullName, GetObjectMetadataResponse response)
