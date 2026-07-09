@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -46,24 +47,31 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
 
     public async Task<IFileSystemStructureLinkInfo> GetLinkInfoAsync(string fullName)
     {
-
         try
         {
             return await GetLinkInfoCoreAsync(fullName);
         }
-        catch
+        catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound)
         {
             if (Path.HasExtension(fullName))
                 return null;
 
+            var correctFullName = GetCorrectDirectoryFullName(fullName);
             try
             {
-                var correctFullName = GetCorrectDirectoryFullName(fullName);
                 return await GetLinkInfoCoreAsync(correctFullName);
             }
-            catch
+            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
-                return null;
+                // Intermediate directories have no marker object; treat as existing if anything shares the prefix.
+                var listResponse = await _storageClient.ListObjectsV2Async(new ListObjectsV2Request
+                {
+                    BucketName = _bucketName,
+                    Prefix = correctFullName,
+                    MaxKeys = 1
+                });
+
+                return listResponse.S3Objects is { Count: > 0 } ? new DirectoryInfo(fullName) : null;
             }
         }
     }
@@ -360,6 +368,11 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             FullName = fullName;
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
+        }
+        // Prefix-only directory (see GetLinkInfoAsync) has no marker object, so no timestamp.
+        public DirectoryInfo(string fullName)
+        {
+            FullName = fullName;
         }
     }
 }
