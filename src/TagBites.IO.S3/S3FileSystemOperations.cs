@@ -89,14 +89,13 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
         var response = await _storageClient.GetObjectMetadataAsync(_bucketName, file.FullName);
         return new FileInfo(file.FullName, response);
     }
-    public Task<IFileLinkInfo> MoveFileAsync(FileLink source, FileLink destination, bool overwrite)
+    public async Task<IFileLinkInfo> MoveFileAsync(FileLink source, FileLink destination, bool overwrite)
     {
-        throw new NotImplementedException();
-        //var result = await _storageClient.CopyObjectAsync(_bucketName, source.FullName, _bucketName, destination.FullName);
-        //await _storageClient.DeleteObjectAsync(_bucketName, source.FullName);
+        await _storageClient.CopyObjectAsync(_bucketName, source.FullName, _bucketName, destination.FullName);
+        await _storageClient.DeleteObjectAsync(_bucketName, source.FullName);
 
-        //var response = await _storageClient.GetObjectMetadataAsync(_bucketName, destination.FullName);
-        //return new FileInfo(destination.FullName, response);
+        var response = await _storageClient.GetObjectMetadataAsync(_bucketName, destination.FullName);
+        return new FileInfo(destination.FullName, response);
     }
     public async Task DeleteFileAsync(FileLink file) => await _storageClient.DeleteObjectAsync(_bucketName, file.FullName);
 
@@ -121,29 +120,42 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
         var metadataResponse = await _storageClient.GetObjectMetadataAsync(metadataRequest);
         return new DirectoryInfo(directory.FullName, metadataResponse);
     }
-    public Task<IFileSystemStructureLinkInfo> MoveDirectoryAsync(DirectoryLink source, DirectoryLink destination)
+    public async Task<IFileSystemStructureLinkInfo> MoveDirectoryAsync(DirectoryLink source, DirectoryLink destination)
     {
-        throw new NotImplementedException();
-        //var sourceFullName = GetCorrectDirectoryFullName(source.FullName);
-        //var destinationFullName = GetCorrectDirectoryFullName(destination.FullName);
+        var sourceFullName = GetCorrectDirectoryFullName(source.FullName);
+        var destinationFullName = GetCorrectDirectoryFullName(destination.FullName);
 
-        //var copyRequest = new CopyObjectRequest
-        //{
-        //    SourceBucket = _bucketName,
-        //    DestinationBucket = _bucketName,
-        //    SourceKey = sourceFullName,
-        //    DestinationKey = destinationFullName,
-        //};
+        // S3 has no atomic rename; every object under the source prefix is copied then deleted.
+        var isTruncated = true;
+        string continuationToken = null;
+        while (isTruncated)
+        {
+            var listRequest = new ListObjectsV2Request
+            {
+                BucketName = _bucketName,
+                Prefix = sourceFullName,
+                ContinuationToken = continuationToken
+            };
+            var listResponse = await _storageClient.ListObjectsV2Async(listRequest);
 
-        //var result = await _storageClient.CopyObjectAsync(copyRequest);
-        //await _storageClient.DeleteObjectAsync(_bucketName, sourceFullName);
-        //var metadataRequest = new GetObjectMetadataRequest
-        //{
-        //    BucketName = _bucketName,
-        //    Key = destinationFullName
-        //};
-        //var metadataResponse = await _storageClient.GetObjectMetadataAsync(metadataRequest);
-        //return new DirectoryInfo(destinationFullName, metadataResponse);
+            foreach (var s3Object in listResponse.S3Objects)
+            {
+                var destinationKey = destinationFullName + s3Object.Key.Substring(sourceFullName.Length);
+                await _storageClient.CopyObjectAsync(_bucketName, s3Object.Key, _bucketName, destinationKey);
+                await _storageClient.DeleteObjectAsync(_bucketName, s3Object.Key);
+            }
+
+            continuationToken = listResponse.NextContinuationToken;
+            isTruncated = listResponse.IsTruncated ?? false;
+        }
+
+        var metadataRequest = new GetObjectMetadataRequest
+        {
+            BucketName = _bucketName,
+            Key = destinationFullName
+        };
+        var metadataResponse = await _storageClient.GetObjectMetadataAsync(metadataRequest);
+        return new DirectoryInfo(destination.FullName, metadataResponse);
     }
     public async Task DeleteDirectoryAsync(DirectoryLink directory, bool recursive)
     {
