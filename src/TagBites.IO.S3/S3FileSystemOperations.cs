@@ -45,7 +45,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
         _disablePayloadSigning = serviceUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<IFileSystemStructureLinkInfo> GetLinkInfoAsync(string fullName)
+    public async Task<IFileSystemStructureLinkInfo?> GetLinkInfoAsync(string fullName)
     {
         try
         {
@@ -75,7 +75,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             }
         }
     }
-    private async Task<IFileSystemStructureLinkInfo> GetLinkInfoCoreAsync(string fullName)
+    private async Task<IFileSystemStructureLinkInfo?> GetLinkInfoCoreAsync(string fullName)
     {
         var response = await _storageClient.GetObjectMetadataAsync(_bucketName, fullName);
         return GetInfo(fullName, response);
@@ -140,7 +140,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
 
         // S3 has no atomic rename; every object under the source prefix is copied then deleted.
         var isTruncated = true;
-        string continuationToken = null;
+        string? continuationToken = null;
         while (isTruncated)
         {
             var listRequest = new ListObjectsV2Request
@@ -178,7 +178,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
         if (recursive)
         {
             var isTruncated = true;
-            string continuationToken = null;
+            string? continuationToken = null;
             while (isTruncated)
             {
                 var request = new ListObjectsV2Request
@@ -226,7 +226,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
         options.RecursiveHandled = true;
 
         var isTruncated = true;
-        string continuationToken = null;
+        string? continuationToken = null;
         var result = new List<IFileSystemStructureLinkInfo>();
 
         var delimiter = !options.Recursive ? DirectorySeparatorString : null;
@@ -264,10 +264,11 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
     public async Task<IFileSystemStructureLinkInfo> UpdateMetadataAsync(FileSystemStructureLink link, IFileSystemLinkMetadata metadata)
     {
         var obj = await _storageClient.GetObjectAsync(_bucketName, link.FullName);
-        return GetInfo(obj);
+        // The object was just successfully fetched, so response is never null here.
+        return GetInfo(obj)!;
     }
 
-    private static IFileSystemStructureLinkInfo GetInfo(string fullName, GetObjectMetadataResponse response)
+    private static IFileSystemStructureLinkInfo? GetInfo(string fullName, GetObjectMetadataResponse response)
     {
         if (response == null)
             return null;
@@ -277,7 +278,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
 
         return new FileInfo(fullName, response);
     }
-    private static IFileSystemStructureLinkInfo GetInfo(GetObjectResponse response)
+    private static IFileSystemStructureLinkInfo? GetInfo(GetObjectResponse response)
     {
         if (response == null)
             return null;
@@ -295,7 +296,7 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
         return new FileInfo(response);
     }
 
-    private string GetCorrectDirectoryFullName(string directoryFullName) => directoryFullName?.TrimEnd(DirectorySeparator) + DirectorySeparator;
+    private string GetCorrectDirectoryFullName(string directoryFullName) => directoryFullName.TrimEnd(DirectorySeparator) + DirectorySeparator;
 
     public void Dispose() => _storageClient?.Dispose();
 
@@ -319,7 +320,8 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
             Length = response.ContentLength;
-            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag));
+            // Every S3 object has an ETag, so TrimETag never returns null here.
+            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag)!);
         }
         public FileInfo(S3Object response)
         {
@@ -327,7 +329,8 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
             Length = response.Size ?? 0;
-            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag));
+            // Every S3 object has an ETag, so TrimETag never returns null here.
+            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag)!);
         }
         public FileInfo(string fullName, GetObjectMetadataResponse response)
         {
@@ -335,11 +338,12 @@ internal class S3FileSystemOperations : IFileSystemAsyncWriteOperations, IFileSy
             CreationTime = response.LastModified;
             LastWriteTime = response.LastModified;
             Length = response.ContentLength;
-            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag));
+            // Every S3 object has an ETag, so TrimETag never returns null here.
+            Hash = new FileHash(FileHashAlgorithm.Md5, TrimETag(response.ETag)!);
         }
 
         // Some S3-compatible servers (e.g. MinIO) leave quotes in the ETag that AWS strips.
-        private static string TrimETag(string etag) => etag?.Trim('"');
+        private static string? TrimETag(string? etag) => etag?.Trim('"');
     }
     private class DirectoryInfo : IFileSystemStructureLinkInfo
     {
